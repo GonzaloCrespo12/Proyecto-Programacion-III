@@ -1,0 +1,33 @@
+# --- 1. Dependencias (Composer) ---
+# Esta es la carpeta más importante a ignorar en PHP.
+/vendor/
+
+# --- 2. Archivos de Entorno (Secretos) ---
+# NUNCA subas tus contraseñas.
+.env
+
+# --- 3. Archivos Generados (Datos del Proyecto) ---
+# Fotos de perfil de clientes, PDFs generados, etc.
+#/uploads/
+# Ignora todo el *contenido* de uploads, pero no la carpeta en sí
+/uploads/*
+
+# ¡Pero NO ignores el archivo .gitkeep!
+!/uploads/.gitkeep
+
+# --- 4. Archivos de SO y "Basura" ---
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+
+# --- 5. Archivos de IDE (Configuración de Editor) ---
+.vscode/
+.idea/
+
+# --- 6. Archivos de Log (Registros) ---
+*.log
+
+# --- 7. Scripts Temporales ---
+# Nuestro script de creación de admin no debe estar en el repo.
+crear_admin.php
