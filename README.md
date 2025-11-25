@@ -52,10 +52,6 @@ El sistema ya cuenta con un administrador creado en la base de datos:
 * **Email:** `admin@demo.local`
 * **Contraseña:** `admin123`
 
-> **Nota:** También se incluye el script `auth/crearAdmin.php` para generar nuevos administradores manualmente si fuera necesario.
-
----
-
 ## 🛠 Tecnologías Utilizadas
 * **Backend:** PHP 8 (PDO, Sessions).
 * **Frontend:** Bootstrap 5.3, FontAwesome.
