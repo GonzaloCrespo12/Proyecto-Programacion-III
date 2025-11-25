@@ -1,14 +1,24 @@
 <?php
 
-// Aseguramos que la sesión esté iniciada
+/**
+ * require_login.php
+ * Middleware de Control de Acceso.
+ *
+ * Este script debe incluirse al principio de cualquier archivo que requiera
+ * autenticacion. Verifica si existe una sesion de usuario activa.
+ * Si no hay sesion, redirige al usuario al formulario de login y detiene la ejecucion.
+ */
+
+// Verificacion defensiva: Asegurar que la sesion este iniciada.
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 2. El Portero: ¿Tenés credencial (user_id)?
+// Validacion de credencial de sesion (ID de usuario).
 if (!isset($_SESSION['user_id'])) {
-    // Si no tenés, te mando al login usando la constante global
-    // Asumimos que config.php ya se cargo antes y definio BASE_URL
+    // Redireccion al login utilizando la ruta absoluta definida en config.php.
     header('Location: ' . BASE_URL . '/auth/login.php');
-    exit; // Para que no se ejecute nada más.
+
+    // Detener ejecucion inmediatamente para evitar que se procese codigo posterior.
+    exit;
 }

@@ -1,12 +1,24 @@
 <?php
-// includes/header.php
 
+/**
+ * includes/header.php
+ * Encabezado Global y Barra de Navegacion Lateral (Sidebar).
+ *
+ * Contiene la estructura HTML inicial, estilos CSS, logica de navegacion activa
+ * Tambien gestiona la visualizacion condicional de opciones segun la pagina actual.
+ */
+
+// Asegurar que la sesion este iniciada para acceder a variables de sesion
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+// Cargar configuracion global
 require_once __DIR__ . '/config.php';
 
-// Lógica de Navegación
+// LOGICA DE NAVEGACION ACTIVA
+// Detecta el script en ejecucion para resaltar la opcion correspondiente en el menu
+// y ocultar botones redundantes (ej: no mostrar "Nuevo Cliente" si ya estamos en esa pantalla).
 $ruta_actual = $_SERVER['PHP_SELF'];
 $estoy_en_lista  = (strpos($ruta_actual, '/clientes/index.php') !== false);
 $estoy_en_crear  = (strpos($ruta_actual, '/clientes/crear.php') !== false);
@@ -19,15 +31,16 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRM Pro - Panel</title>
+    <title>CRM Pro - Panel de Control</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
     <style>
-        /* Temas: variables CSS para modo claro y oscuro */
+        /* GESTION DE TEMAS (Variables CSS) */
         :root {
-            /* Tema claro (como estaba antes) */
+            /* Paleta de colores para modo Claro */
             --bg-body: #f8f9fa;
             --sidebar-bg: #ffffff;
             --sidebar-border: #e9ecef;
@@ -36,7 +49,8 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             --list-item-border-hover: rgba(13, 110, 253, 0.4);
             --user-card-bg-hover: #f1f3f5;
             --page-padding: 30px;
-            /* Variables adicionales para tarjetas e iconos */
+
+            /* Componentes UI */
             --card-bg: #ffffff;
             --card-title-color: #2c3e50;
             --card-text-color: #6c757d;
@@ -46,11 +60,10 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             --icon-blue-color: #0d6efd;
             --btn-border-color: rgba(33, 37, 41, 0.08);
             --btn-hover-bg: rgba(13, 110, 253, 0.12);
-            /* azul oscuro en modo claro */
         }
 
+        /* Clase activada mediante JavaScript para Modo Oscuro */
         .dark-theme {
-            /* Tema oscuro (estado actual) */
             --bg-body: #d7d7d7ff;
             --sidebar-bg: #d7d7d7ff;
             --sidebar-border: #d0d0d0;
@@ -59,7 +72,8 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             --list-item-border-hover: rgba(13, 110, 253, 0.4);
             --user-card-bg-hover: #f1f3f5;
             --page-padding: 30px;
-            /* Overrides para tarjetas e iconos en tema oscuro */
+
+            /* Ajustes de contraste para modo oscuro */
             --card-bg: #f0f0f0;
             --card-title-color: #1a1a1a;
             --card-text-color: #3a3a3a;
@@ -69,7 +83,6 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             --icon-blue-color: #64b5f6;
             --btn-border-color: rgba(33, 37, 41, 0.12);
             --btn-hover-bg: rgba(100, 181, 246, 0.12);
-            /* azul claro en modo oscuro */
         }
 
         body {
@@ -78,21 +91,17 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             overflow-x: hidden;
         }
 
-        /* Transiciones suaves al alternar tema */
+        /* Transiciones globales para cambio suave de tema */
         html,
         body,
         #sidebar-wrapper,
-        #page-content-wrapper,
         .card-action,
         .list-group-item,
-        .user-card,
-        .icon-circle,
-        .card-title,
-        .card-text {
-            transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        .card-title {
+            transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
         }
 
-        /* Borde más sutil para el botón de alternar tema */
+        /* Boton toggle de tema */
         #theme-toggle {
             border: 2px solid var(--btn-border-color) !important;
             padding: 4px 8px;
@@ -104,35 +113,35 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             justify-content: center;
         }
 
-        /* Hover: azul oscuro en tema claro, azul claro en tema oscuro */
         #theme-toggle:hover {
             background-color: var(--btn-hover-bg) !important;
             color: var(--icon-blue-color) !important;
         }
 
-        /* Layout Flex para Sidebar Fijo */
+        /* ESTRUCTURA DE LAYOUT (Flexbox) */
         #wrapper {
             display: flex;
             width: 100%;
             align-items: stretch;
         }
 
-        /* --- SIDEBAR FIJO --- */
+        /* BARRA LATERAL FIJA (Sticky Sidebar) */
         #sidebar-wrapper {
             min-width: 260px;
             max-width: 260px;
             height: 100vh;
             position: sticky;
-            /* Se queda pegado al scrollear */
+            /* Se mantiene fija al hacer scroll */
             top: 0;
             background-color: var(--sidebar-bg);
             border-right: 1px solid var(--sidebar-border);
             display: flex;
             flex-direction: column;
+            /* Organizacion vertical de elementos */
             z-index: 1000;
         }
 
-        /* Estilos de Marca y Menú */
+        /* Estilos de Elementos del Menu */
         .sidebar-brand {
             padding: 1.5rem 1.5rem;
             font-size: 1.5rem;
@@ -163,6 +172,7 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             border-right: 4px solid var(--list-item-border-hover);
         }
 
+        /* Estado Activo (Pagina actual) */
         .active-nav {
             color: #0d6efd !important;
             background-color: #e7f1ff !important;
@@ -171,6 +181,7 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
 
         .user-profile {
             margin-top: auto;
+            /* Empuja este bloque al fondo del sidebar */
             padding: 1rem;
             border-top: 1px solid #e9ecef;
         }
@@ -195,10 +206,9 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             width: 100%;
             padding: 30px;
             flex-grow: 1;
-            /* Ocupa el resto del ancho */
         }
 
-        /* Animaciones y Utilidades */
+        /* Utilidades: Rotacion de flecha y cursores */
         .chevron-rotate {
             transition: transform 0.3s ease;
         }
@@ -233,7 +243,6 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
                 </div>
                 <span style="letter-spacing: -0.5px;">CRM<span class="text-primary">Pro</span></span>
 
-                <!-- Toggle de Tema -->
                 <button id="theme-toggle" class="btn btn-sm btn-outline-secondary ms-3" title="Alternar tema" style="height:36px; align-self:center;">
                     <i id="theme-icon" class="fa-solid fa-moon"></i>
                 </button>
@@ -289,7 +298,7 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
                         </li>
                         <li>
                             <a class="dropdown-item text-danger" href="<?= BASE_URL ?>/auth/logout.php">
-                                <i class="fa-solid fa-arrow-right-from-bracket me-2"></i> Cerrar Sesión
+                                <i class="fa-solid fa-arrow-right-from-bracket me-2"></i> Cerrar Sesion
                             </a>
                         </li>
                     </ul>

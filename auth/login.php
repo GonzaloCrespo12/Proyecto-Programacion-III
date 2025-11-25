@@ -1,10 +1,16 @@
 <?php
-// auth/login.php
 
-// 1. Configuración
+/**
+ * auth/login.php
+ * Modulo de Autenticacion de Usuarios.
+ * Maneja el inicio de sesion, proteccion contra fuerza bruta (Rate Limiting)
+ * y gestion de sesiones seguras.
+ */
+
+//  Configuracion e Inicializacion
 require_once '../includes/config.php';
 
-// Si ya está logueado, al panel
+// Control de Sesion: Redireccionar al dashboard si el usuario ya está autenticado.
 if (isset($_SESSION['user_id'])) {
     header('Location: ' . BASE_URL . '/index.php');
     exit;
@@ -13,14 +19,19 @@ if (isset($_SESSION['user_id'])) {
 $error = '';
 
 // ==============================================================================
-// [SISTEMA RATE LIMIT] SIN BASE DE DATOS (Usa archivo temporal)
-// ==============================================================================
+// SISTEMA DE RATE LIMITING (Proteccion contra Fuerza Bruta)
+// Almacenamiento basado en archivo JSON temporal para bloquear IPs recurrentes.
+
 $archivo_intentos = sys_get_temp_dir() . '/login_attempts_crm.json';
 $ip_actual = $_SERVER['REMOTE_ADDR'];
 $limite_intentos = 5;
-$tiempo_bloqueo = 600; // 10 minutos en segundos
+$tiempo_bloqueo = 600; // Duracion del bloqueo en segundos (10 minutos)
 
-// Función auxiliar para leer/escribir el registro
+/**
+ * Recupera el registro de intentos de inicio de sesión.
+ * @param string $archivo Ruta del archivo JSON.
+ * @return array Datos decodificados o array vacío.
+ */
 function obtener_registro_intentos($archivo)
 {
     if (file_exists($archivo)) {
@@ -30,12 +41,12 @@ function obtener_registro_intentos($archivo)
     return [];
 }
 
-// 1. Cargar registro y limpiar datos viejos (Garbage Collection)
+// Carga de registros y Garbage Collection (Limpieza de datos obsoletos)
 $registro_ips = obtener_registro_intentos($archivo_intentos);
 $ahora = time();
 $cambios = false;
 
-// Limpiamos IPs que ya expiraron hace más de 10 mins
+// Eliminar registros de IPs cuyo tiempo de bloqueo ha expirado
 foreach ($registro_ips as $ip => $datos) {
     if (($ahora - $datos['ultimo_intento']) > $tiempo_bloqueo) {
         unset($registro_ips[$ip]);
@@ -43,7 +54,7 @@ foreach ($registro_ips as $ip => $datos) {
     }
 }
 
-// 2. Verificar si la IP actual está bloqueada
+// Verificación de estado de bloqueo para la IP actual
 $bloqueado = false;
 $minutos_restantes = 0;
 
@@ -51,50 +62,56 @@ if (isset($registro_ips[$ip_actual])) {
     $intentos = $registro_ips[$ip_actual]['count'];
     $ultimo_tiempo = $registro_ips[$ip_actual]['ultimo_intento'];
 
-    // Si superó intentos Y está dentro de la ventana de tiempo
+    // Condicion de bloqueo: Supero intentos maximos dentro de la ventana de tiempo
     if ($intentos >= $limite_intentos && ($ahora - $ultimo_tiempo) < $tiempo_bloqueo) {
         $bloqueado = true;
         $segundos_restantes = $tiempo_bloqueo - ($ahora - $ultimo_tiempo);
         $minutos_restantes = ceil($segundos_restantes / 60);
 
-        $error = "Acceso bloqueado temporalmente. Demasiados intentos fallidos. Esperá $minutos_restantes minutos.";
+        $error = "Acceso bloqueado temporalmente por seguridad. Espere $minutos_restantes minutos.";
     }
 }
 
+// Persistencia de cambios en el archivo temporal
 if ($cambios) {
     file_put_contents($archivo_intentos, json_encode($registro_ips));
 }
 
-// ==============================================================================
-// [PROCESAMIENTO DEL FORMULARIO]
-// ==============================================================================
+// PROCESAMIENTO DE LA SOLICITUD DE LOGIN (POST)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
 
+    // Validacion de Token CSRF para prevenir ataques Cross-Site Request Forgery
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die('Error de seguridad: Token inválido.');
+        die('Error de seguridad: Token CSRF inválido.');
     }
 
+    // Sanitizacion de entrada de datos
     $email = filter_var(trim($_POST['email']), FILTER_SANITIZE_EMAIL);
     $password = $_POST['password'];
 
     try {
+        // Consulta preparada para prevenir Inyeccion SQL
         $sql = "SELECT id, nombre, email, pass_hash, rol, activo FROM usuarios WHERE email = :email LIMIT 1";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([':email' => $email]);
         $usuario = $stmt->fetch();
 
+        // Verificacion de contraseña mediante hash
         if ($usuario && password_verify($password, $usuario['pass_hash'])) {
 
             if ($usuario['activo'] == 0) {
-                $error = "Esta cuenta ha sido desactivada.";
+                $error = "Esta cuenta ha sido desactivada por el administrador.";
             } else {
-                // [ÉXITO] - Limpiamos prontuario
+                // Autenticacion Exitosa: Limpiar registro de intentos fallidos
                 if (isset($registro_ips[$ip_actual])) {
                     unset($registro_ips[$ip_actual]);
                     file_put_contents($archivo_intentos, json_encode($registro_ips));
                 }
 
+                // Regenerar ID de sesion para prevenir Session Fixation
                 session_regenerate_id(true);
+
+                // Inicializar variables de sesion
                 $_SESSION['user_id'] = $usuario['id'];
                 $_SESSION['nombre_usuario'] = $usuario['nombre'];
                 $_SESSION['email'] = $usuario['email'];
@@ -104,8 +121,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
                 exit;
             }
         } else {
-            // [FALLO] - Registramos intento
-            $error = "Email o contraseña incorrectos.";
+            // Autenticacion Fallida: Registrar intento y actualizar contador
+            $error = "Credenciales incorrectas.";
 
             if (!isset($registro_ips[$ip_actual])) {
                 $registro_ips[$ip_actual] = ['count' => 1, 'ultimo_intento' => time()];
@@ -116,14 +133,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
 
             file_put_contents($archivo_intentos, json_encode($registro_ips));
 
-            // Chequeo inmediato post-fallo
+            // Verificacion inmediata post-intento
             if ($registro_ips[$ip_actual]['count'] >= $limite_intentos) {
                 $bloqueado = true;
-                $error = "Acceso bloqueado. Has superado los 5 intentos. Esperá 10 minutos.";
+                $error = "Acceso bloqueado por seguridad. Superó el límite de intentos.";
             }
         }
     } catch (PDOException $e) {
-        $error = "Error de conexión con la base de datos.";
+        $error = "Error de conexión con el servicio de datos.";
     }
 }
 ?>
@@ -138,10 +155,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
     <style>
+        /* Estilos UI del Login */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8f9fa;
-            /* Fondo gris suave (Clean Style) */
             height: 100vh;
             display: flex;
             align-items: center;
@@ -151,7 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
         .login-card {
             background: #ffffff;
             border-radius: 16px;
-            /* Sombra suave y elegante estilo SaaS */
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
             padding: 3rem;
             width: 100%;
@@ -159,7 +175,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
             border: 1px solid #e9ecef;
         }
 
-        /* Inputs estilo "Clean" (Igual que en crear.php) */
         .form-control {
             background-color: #f8f9fa;
             border: 1px solid transparent;
@@ -173,10 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
             background-color: #fff;
             border-color: #dee2e6;
             box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.1);
-            /* Focus azul suave */
         }
 
-        /* Botón Azul Estándar */
         .btn-primary {
             background-color: #0d6efd;
             border: none;
@@ -193,7 +206,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
             box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2);
         }
 
-        /* Ojito de contraseña */
         .input-group-text {
             background: transparent;
             border: none;
@@ -217,7 +229,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$bloqueado) {
             color: #adb5bd;
         }
 
-        /* Si está bloqueado */
         fieldset[disabled] {
             opacity: 0.6;
         }

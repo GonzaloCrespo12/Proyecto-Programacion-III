@@ -1,35 +1,68 @@
 <?php
-// clientes/index.php
+
+/**
+ * clientes/index.php
+ * Modulo de Gestion y Listado de Clientes.
+ *
+ * Este script actua como controlador de la vista principal de clientes.
+ * Responsabilidades:
+ * 1. Autenticacion y control de acceso (Middleware).
+ * 2. Paginacion de resultados del lado del servidor (Offset/Limit).
+ * 3. Filtrado dinamico por busqueda de texto (Nombre/Apellido).
+ * 4. Renderizado de la tabla de datos con acciones contextuales.
+ */
+
+// Importacion de configuracion global y middleware de seguridad
 require_once '../includes/config.php';
 require_once '../includes/require_login.php';
 
+// Control de Acceso Basado en Roles
+// Se determina si el usuario actual tiene privilegios administrativos.
 $es_admin = ($_SESSION['rol'] === 'admin');
 
-// CONFIGURACIÓN DE PAGINACIÓN Y BÚSQUEDA
+// LOGICA DE PAGINACION Y FILTRADO DE DATOS
+
+// Configuracion de limites de visualizacion
 $registros_por_pagina = 5;
+
+// Sanitizacion del parametro de pagina actual (debe ser entero positivo)
 $pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
 if ($pagina_actual < 1) $pagina_actual = 1;
 
+// Captura del termino de busqueda (si existe)
 $busqueda = $_GET['q'] ?? '';
+
+// Calculo del desplazamiento (OFFSET) para la consulta SQL
 $inicio = ($pagina_actual - 1) * $registros_por_pagina;
 
 try {
-    // PASO A: Contar TOTAL (Solo activos)
+    // CONSULTA DE CONTEO (Para calcular total de paginas)
+    // Se filtra por 'activo = 1' para excluir registros eliminados logicamente.
     $sql_count = "SELECT COUNT(*) FROM clientes c WHERE c.activo = 1";
+
+    // Inyeccion dinamica de clausulas WHERE segun busqueda
     if ($busqueda) {
         $sql_count .= " AND (c.nombre LIKE :qn OR c.apellido LIKE :qa)";
     }
+
     $stmt_count = $pdo->prepare($sql_count);
+
+    // Vinculacion de parametros de busqueda
     if ($busqueda) {
         $termino = "%$busqueda%";
         $stmt_count->bindValue(':qn', $termino, PDO::PARAM_STR);
         $stmt_count->bindValue(':qa', $termino, PDO::PARAM_STR);
     }
+
     $stmt_count->execute();
     $total_registros = $stmt_count->fetchColumn();
+
+    // Calculo matematico de paginas totales (redondeo hacia arriba)
     $total_paginas = ceil($total_registros / $registros_por_pagina);
 
-    // PASO B: Traer DATOS
+    // CONSULTA PRINCIPAL (Recuperacion de datos)
+    // Se utiliza GROUP_CONCAT para desnormalizar la relacion many-to-many con especialidades
+    // en una sola fila, evitando el problema de N+1 consultas.
     $sql = "SELECT 
                 c.id, c.nombre, c.apellido, c.fecha_nacimiento, c.fotoPerfil, 
                 GROUP_CONCAT(e.nombre SEPARATOR ', ') as especialidades
@@ -38,23 +71,32 @@ try {
             LEFT JOIN especialidades e ON ce.especialidad_id = e.id
             WHERE c.activo = 1";
 
+    // Replicacion del filtro de busqueda en la consulta principal
     if ($busqueda) {
         $sql .= " AND (c.nombre LIKE :qn OR c.apellido LIKE :qa)";
     }
+
+    // Clausulas de agrupamiento (necesario por el JOIN) y limites de paginacion
     $sql .= " GROUP BY c.id ORDER BY c.id DESC LIMIT :limite OFFSET :inicio";
 
     $stmt = $pdo->prepare($sql);
+
+    // Vinculacion de parametros (Busqueda + Paginacion)
     if ($busqueda) {
         $termino = "%$busqueda%";
         $stmt->bindValue(':qn', $termino, PDO::PARAM_STR);
         $stmt->bindValue(':qa', $termino, PDO::PARAM_STR);
     }
+
+    // PDO requiere que LIMIT y OFFSET sean tratados explícitamente como enteros
     $stmt->bindValue(':limite', $registros_por_pagina, PDO::PARAM_INT);
     $stmt->bindValue(':inicio', $inicio, PDO::PARAM_INT);
+
     $stmt->execute();
     $clientes = $stmt->fetchAll();
 } catch (PDOException $e) {
-    die("Error crítico: " . $e->getMessage());
+    // Manejo de errores criticos de base de datos
+    die("Error critico al cargar listado: " . $e->getMessage());
 }
 
 require_once '../includes/header.php';
@@ -71,7 +113,7 @@ require_once '../includes/header.php';
             <i class="fa-solid fa-plus me-2"></i> Nuevo Cliente
         </a>
     </div>
-
+    <!-- Mensajes flash -->
     <?php if (isset($_SESSION['flash_msg'])): ?>
         <div class="alert alert-<?= $_SESSION['flash_type'] ?> alert-dismissible fade show shadow-sm border-0 rounded-3">
             <?= h($_SESSION['flash_msg']) ?>
@@ -92,7 +134,7 @@ require_once '../includes/header.php';
                         value="<?= h($busqueda) ?>">
 
                     <?php if ($busqueda): ?>
-                        <a href="index.php" class="btn btn-light border-0 text-muted" title="Limpiar">
+                        <a href="index.php" class="btn btn-light border-0 text-muted" title="Limpiar filtros">
                             <i class="fa-solid fa-xmark"></i>
                         </a>
                     <?php endif; ?>
@@ -132,6 +174,7 @@ require_once '../includes/header.php';
                                     <?php else: ?>
                                         <div class="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center mx-auto text-primary fw-bold"
                                             style="width: 40px; height: 40px; font-size: 0.8rem;">
+                                            <!-- Iniciales del cliente -->
                                             <?= h(strtoupper(substr($cli['nombre'], 0, 1) . substr($cli['apellido'], 0, 1))) ?>
                                         </div>
                                     <?php endif; ?>
@@ -146,6 +189,7 @@ require_once '../includes/header.php';
                                     if ($cli['fecha_nacimiento']) {
                                         $dob = new DateTime($cli['fecha_nacimiento']);
                                         $now = new DateTime();
+                                        // Calculo de diferencia de años
                                         echo $dob->diff($now)->y . ' años';
                                     } else {
                                         echo '<span class="text-muted opacity-50">-</span>';
@@ -175,7 +219,7 @@ require_once '../includes/header.php';
                                             title="Editar">
                                             <i class="fa-solid fa-pen"></i>
                                         </a>
-
+                                        <!-- logica de control de acceso para boton eliminar -->
                                         <?php if ($es_admin): ?>
                                             <button type="button"
                                                 class="btn btn-sm btn-light text-danger border rounded-circle shadow-sm"
@@ -202,11 +246,11 @@ require_once '../includes/header.php';
                 </tbody>
             </table>
         </div>
-
+        <!-- Paginacion -->
         <?php if ($total_paginas > 1): ?>
             <div class="card-footer bg-white border-0 py-3 d-flex justify-content-between align-items-center">
                 <small class="text-muted">
-                    Página <strong><?= $pagina_actual ?></strong> de <strong><?= $total_paginas ?></strong>
+                    Pagina <strong><?= $pagina_actual ?></strong> de <strong><?= $total_paginas ?></strong>
                 </small>
 
                 <nav>
@@ -216,6 +260,7 @@ require_once '../includes/header.php';
                                 <i class="fa-solid fa-chevron-left"></i>
                             </a>
                         </li>
+                        <!-- Numeros de pagina -->
                         <?php for ($i = 1; $i <= $total_paginas; $i++): ?>
                             <li class="page-item">
                                 <a class="page-link border-0 <?= ($i == $pagina_actual) ? 'bg-primary text-white shadow-sm rounded-circle' : 'text-secondary' ?> mx-1 d-flex align-items-center justify-content-center"
@@ -225,6 +270,7 @@ require_once '../includes/header.php';
                                 </a>
                             </li>
                         <?php endfor; ?>
+                        <!-- Siguiente pagina -->
                         <li class="page-item <?= ($pagina_actual >= $total_paginas) ? 'disabled' : '' ?>">
                             <a class="page-link border-0 rounded-end-pill text-secondary" href="?pagina=<?= $pagina_actual + 1 ?>&q=<?= h($busqueda) ?>">
                                 <i class="fa-solid fa-chevron-right"></i>
@@ -236,15 +282,16 @@ require_once '../includes/header.php';
         <?php endif; ?>
     </div>
 </div>
-
+<!-- Formulario oculto para eliminacion de cliente -->
 <form id="form-eliminar" action="eliminar.php" method="POST" style="display: none;">
     <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
     <input type="hidden" name="id" id="input-eliminar-id">
 </form>
 
 <script>
+    // Confirmacion simple para eliminacion de cliente (Soft Delete)
     function confirmarEliminacion(id) {
-        if (confirm('¿Seguro que querés desactivar este cliente?\nPasará a la papelera.')) {
+        if (confirm('¿Seguro que queres desactivar este cliente?\nPasara a la papelera.')) {
             document.getElementById('input-eliminar-id').value = id;
             document.getElementById('form-eliminar').submit();
         }

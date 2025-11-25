@@ -1,32 +1,39 @@
 <?php
-// 1. Incluimos config para iniciar la sesión actual (necesitamos "abrirla" para poder "cerrarla")
+
+/**
+ * auth/logout.php
+ * Módulo de Cierre de Sesion.
+ * Se encarga de limpiar variables, invalidar cookies y destruir la sesión en el servidor.
+ */
+
+// Inicializar sesión existente para poder manipularla
 require_once '../includes/config.php';
 
-// --------------------------------------------------------------------------
-// [LOGICA] DESTRUCCIÓN TOTAL DE SESIÓN
-// --------------------------------------------------------------------------
 
-// 2. Vaciamos el array de la sesión
-// Esto borra $_SESSION['user_id'], $_SESSION['rol'], etc. de la memoria inmediata.
+// PROCESO DE DESTRUCCION DE SESION
+// Limpieza de variables de sesion
+// Se vacía el array superglobal $_SESSION para eliminar datos en tiempo de ejecucion.
 $_SESSION = [];
 
-// 3. Borramos la Cookie de Sesión del navegador
-// Esto es clave. Si no hacés esto, la cookie sigue viva en el navegador del usuario.
+// Invalidacion de la Cookie de Sesion (Lado Cliente)
+// Es necesario caducar la cookie en el navegador para evitar reutilizacion.
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000,
-        $params["path"], $params["domain"],
-        $params["secure"], $params["httponly"]
+    setcookie(
+        session_name(),
+        '',
+        time() - 42000,
+        $params["path"],
+        $params["domain"],
+        $params["secure"],
+        $params["httponly"]
     );
 }
 
-// 4. Destruimos la sesión en el servidor
+// Destruccion de la sesion (Lado Servidor)
+// Elimina el archivo de sesion o registro en el almacenamiento del servidor.
 session_destroy();
 
-// --------------------------------------------------------------------------
-// [REDIRECCIÓN]
-// --------------------------------------------------------------------------
-// Lo mandamos de vuelta al login.
+// REDIRECCIONAMIENTO
 header("Location: login.php");
 exit;
-?>

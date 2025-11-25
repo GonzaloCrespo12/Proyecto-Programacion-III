@@ -2,57 +2,80 @@
 
 /**
  * config.php
- * Encargado de iniciar sesión, conectar a la BD y definir constantes globales.
- * Este archivo se incluye al principio de todos los scripts.
+ * Modulo de Configuracion Principal.
+ *
+ * Este archivo se encarga de inicializar el entorno de la aplicacion:
+ * 1. Configuracion segura de sesiones (Cookies HTTPOnly).
+ * 2. Definicion de constantes globales (Rutas y Credenciales).
+ * 3. Conexion a la base de datos mediante PDO.
+ * 4. Generacion de tokens CSRF para seguridad en formularios.
+ * 5. Definicion de funciones auxiliares (Helpers).
  */
 
-//Iniciamos la sesión (Manejo de estado entre páginas)
+// CONFIGURACION DE SESION SEGURA
+// Se establecen parametros estrictos para las cookies de sesion antes de iniciarla.
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,            // La sesion expira al cerrar el navegador.
+        'path' => '/',              // Valida en todo el dominio.
+        'domain' => '',             // Dominio actual (vacio para localhost).
+        'secure' => false,          // TRUE solo si se utiliza HTTPS.
+        'httponly' => true,         // Previene acceso a la cookie desde JavaScript (Anti-XSS).
+        'samesite' => 'Strict'      // Proteccion adicional contra ataques CSRF.
+    ]);
+
     session_start();
 }
 
-//Constantes Globales y Credenciales
-// Definimos la URL base para usar rutas absolutas (ajustar si cambia el dominio)
+// CONSTANTES GLOBALES Y CREDENCIALES
+// URL base para generar rutas absolutas y evitar problemas de navegacion.
+// Ajustar segun entorno de desarrollo o produccion.
 define('BASE_URL', 'http://localhost/proyectoProgramacionIII');
 
-// Credenciales de la Base de Datos
+// Credenciales de conexion a la Base de Datos.
+// Ajustar segun entorno de desarrollo o produccion.
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'pruebagestion');
+define('DB_NAME', 'base_datos_clientes');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
-// 3. Conexión con PDO
+// CONEXION A BASE DE DATOS (PDO)
 try {
+    // Data Source Name (DSN) con codificacion UTF-8 para caracteres especiales.
     $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 
-    // Opciones de configuración de PDO para máxima seguridad
+    // Configuracion de opciones PDO para maximizar seguridad y manejo de errores.
     $options = [
-        // Lanzar excepciones si hay error en SQL (para manejarlo en el catch)
+        // Lanzar excepciones en caso de error SQL (permite uso de try-catch).
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        // Devolver resultados como Array Asociativo ($fila['email'])
+        // Obtener resultados como arrays asociativos por defecto.
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        // Desactivar emulación para usar sentencias preparadas nativas (Anti-Inyección SQL real)
+        // Desactivar emulacion para usar sentencias preparadas nativas (Prevencion SQL Injection).
         PDO::ATTR_EMULATE_PREPARES   => false,
     ];
 
-    // Instancia de conexión
+    // Instancia del objeto PDO.
     $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
 } catch (PDOException $e) {
-    // Cortamos la ejecución y mostramos mensaje:
-    die("Error crítico: No se pudo conectar a la base de datos. Contacte al administrador.");
+    // En produccion, no se deben mostrar detalles del error al usuario final.
+    // Se detiene la ejecucion con un mensaje generico.
+    die("Error critico: No se pudo establecer conexion con la base de datos.");
 }
 
-// Seguridad: Generacion de Token CSRF
-// Esto previene ataques donde envian formularios desde otros sitios.
+// SEGURIDAD CSRF (Cross-Site Request Forgery)
+// Generacion de token unico por sesion para validar el origen de los formularios POST.
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// 5. Funciones Helpers (Ayudas globales)
+// FUNCION Auxiliar
 
 /**
- * Función de seguridad para evitar XSS (Cross-Site Scripting).
- * Úsala SIEMPRE que imprimas datos en pantalla: <?= h($variable) ?>
+ * Sanitiza una cadena para su salida segura en HTML.
+ * Previene ataques XSS (Cross-Site Scripting) convirtiendo caracteres especiales.
+ *
+ *  $string Cadena de texto a limpiar.
+ *  string Cadena sanitizada segura para imprimir.
  */
 function h($string)
 {
