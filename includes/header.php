@@ -25,10 +25,89 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
     <style>
+        /* Temas: variables CSS para modo claro y oscuro */
+        :root {
+            /* Tema claro (como estaba antes) */
+            --bg-body: #f8f9fa;
+            --sidebar-bg: #ffffff;
+            --sidebar-border: #e9ecef;
+            --list-item-color: #6c757d;
+            --list-item-hover-bg: #f8f9fa;
+            --list-item-border-hover: rgba(13, 110, 253, 0.4);
+            --user-card-bg-hover: #f1f3f5;
+            --page-padding: 30px;
+            /* Variables adicionales para tarjetas e iconos */
+            --card-bg: #ffffff;
+            --card-title-color: #2c3e50;
+            --card-text-color: #6c757d;
+            --icon-green-bg: #e0f2f1;
+            --icon-green-color: #009688;
+            --icon-blue-bg: #e7f1ff;
+            --icon-blue-color: #0d6efd;
+            --btn-border-color: rgba(33, 37, 41, 0.08);
+            --btn-hover-bg: rgba(13, 110, 253, 0.12);
+            /* azul oscuro en modo claro */
+        }
+
+        .dark-theme {
+            /* Tema oscuro (estado actual) */
+            --bg-body: #d7d7d7ff;
+            --sidebar-bg: #d7d7d7ff;
+            --sidebar-border: #d0d0d0;
+            --list-item-color: #4a4a4a;
+            --list-item-hover-bg: #c6c6c6ff;
+            --list-item-border-hover: rgba(13, 110, 253, 0.4);
+            --user-card-bg-hover: #f1f3f5;
+            --page-padding: 30px;
+            /* Overrides para tarjetas e iconos en tema oscuro */
+            --card-bg: #f0f0f0;
+            --card-title-color: #1a1a1a;
+            --card-text-color: #3a3a3a;
+            --icon-green-bg: #004d47;
+            --icon-green-color: #4dd0c1;
+            --icon-blue-bg: #00356b;
+            --icon-blue-color: #64b5f6;
+            --btn-border-color: rgba(33, 37, 41, 0.12);
+            --btn-hover-bg: rgba(100, 181, 246, 0.12);
+            /* azul claro en modo oscuro */
+        }
+
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8f9fa;
+            background-color: var(--bg-body);
             overflow-x: hidden;
+        }
+
+        /* Transiciones suaves al alternar tema */
+        html,
+        body,
+        #sidebar-wrapper,
+        #page-content-wrapper,
+        .card-action,
+        .list-group-item,
+        .user-card,
+        .icon-circle,
+        .card-title,
+        .card-text {
+            transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        /* Borde más sutil para el botón de alternar tema */
+        #theme-toggle {
+            border: 2px solid var(--btn-border-color) !important;
+            padding: 4px 8px;
+            box-shadow: none !important;
+            background-color: transparent !important;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Hover: azul oscuro en tema claro, azul claro en tema oscuro */
+        #theme-toggle:hover {
+            background-color: var(--btn-hover-bg) !important;
+            color: var(--icon-blue-color) !important;
         }
 
         /* Layout Flex para Sidebar Fijo */
@@ -46,8 +125,8 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             position: sticky;
             /* Se queda pegado al scrollear */
             top: 0;
-            background-color: #ffffff;
-            border-right: 1px solid #e9ecef;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
             display: flex;
             flex-direction: column;
             z-index: 1000;
@@ -68,7 +147,7 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
             border: none;
             padding: 0.8rem 1.5rem;
             font-weight: 500;
-            color: #6c757d;
+            color: var(--list-item-color);
             background-color: transparent;
             display: flex;
             align-items: center;
@@ -80,8 +159,8 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
 
         .list-group-item:hover {
             color: #0d6efd;
-            background-color: #f8f9fa;
-            border-right: 4px solid rgba(13, 110, 253, 0.4);
+            background-color: var(--list-item-hover-bg);
+            border-right: 4px solid var(--list-item-border-hover);
         }
 
         .active-nav {
@@ -153,6 +232,11 @@ $estoy_en_inicio = (strpos($ruta_actual, '/index.php') !== false) && !$estoy_en_
                     <i class="fa-solid fa-chart-simple"></i>
                 </div>
                 <span style="letter-spacing: -0.5px;">CRM<span class="text-primary">Pro</span></span>
+
+                <!-- Toggle de Tema -->
+                <button id="theme-toggle" class="btn btn-sm btn-outline-secondary ms-3" title="Alternar tema" style="height:36px; align-self:center;">
+                    <i id="theme-icon" class="fa-solid fa-moon"></i>
+                </button>
             </div>
 
             <div class="small fw-bold text-uppercase text-muted px-4 mt-3 mb-2" style="font-size: 0.75rem; letter-spacing: 1px;">Principal</div>

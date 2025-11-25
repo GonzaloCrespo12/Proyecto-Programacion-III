@@ -19,8 +19,8 @@ require_once 'includes/header.php';
     .card-action {
         border: none;
         border-radius: 16px;
-        background: #ffffff;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+        background: var(--card-bg, #f0f0f0);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
         transition: transform 0.3s ease, box-shadow 0.3s ease;
         height: 100%;
         text-align: center;
@@ -45,24 +45,24 @@ require_once 'includes/header.php';
     }
 
     .bg-soft-green {
-        background-color: #e0f2f1;
-        color: #009688;
+        background-color: var(--icon-green-bg, #004d47);
+        color: var(--icon-green-color, #4dd0c1);
     }
 
     .bg-soft-blue {
-        background-color: #e7f1ff;
-        color: #0d6efd;
+        background-color: var(--icon-blue-bg, #00356b);
+        color: var(--icon-blue-color, #64b5f6);
     }
 
     .card-title {
         font-weight: 700;
         font-size: 1.25rem;
-        color: #2c3e50;
+        color: var(--card-title-color, #1a1a1a);
         margin-bottom: 1rem;
     }
 
     .card-text {
-        color: #6c757d;
+        color: var(--card-text-color, #3a3a3a);
         font-size: 0.95rem;
         line-height: 1.6;
         margin-bottom: 2rem;
