@@ -1,59 +1,32 @@
 <?php
-// 1. Configuración y Seguridad
+// clientes/editar.php
 require_once '../includes/config.php';
+require_once '../includes/require_login.php';
 
-// Verificamos Login
-if (!isset($_SESSION['user_id'])) {
-    header('Location: ' . BASE_URL . '/auth/login.php');
-    exit;
-}
-
-// Obtenemos el ID de la URL
 $id = $_GET['id'] ?? null;
 if (!$id) {
     header('Location: index.php');
     exit;
 }
-
 $mensaje = "";
 $tipo_mensaje = "";
 
-// --------------------------------------------------------------------------
-// [GET] CARGAR DATOS ACTUALES DEL CLIENTE
-// --------------------------------------------------------------------------
 try {
-    // A) Datos del Cliente
     $stmt = $pdo->prepare("SELECT * FROM clientes WHERE id = :id LIMIT 1");
     $stmt->execute([':id' => $id]);
     $cliente = $stmt->fetch();
+    if (!$cliente) die("Cliente no encontrado.");
 
-    if (!$cliente) {
-        die("El cliente no existe.");
-    }
-
-    // B) Catálogo de Especialidades (Todas las disponibles)
-    $stmt_cat = $pdo->query("SELECT * FROM especialidades ORDER BY nombre ASC");
-    $todas_especialidades = $stmt_cat->fetchAll();
-
-    // C) Especialidades QUE YA TIENE el cliente
-    // Usamos FETCH_COLUMN para obtener un array simple tipo [1, 3, 5]
-    $stmt_mis_esp = $pdo->prepare("SELECT especialidad_id FROM cliente_especialidad WHERE cliente_id = :id");
-    $stmt_mis_esp->execute([':id' => $id]);
-    $mis_especialidades_ids = $stmt_mis_esp->fetchAll(PDO::FETCH_COLUMN);
-
+    $todas_especialidades = $pdo->query("SELECT * FROM especialidades ORDER BY nombre ASC")->fetchAll();
+    $stmt_esp = $pdo->prepare("SELECT especialidad_id FROM cliente_especialidad WHERE cliente_id = :id");
+    $stmt_esp->execute([':id' => $id]);
+    $mis_especialidades_ids = $stmt_esp->fetchAll(PDO::FETCH_COLUMN);
 } catch (PDOException $e) {
-    die("Error de carga: " . $e->getMessage());
+    die("Error: " . $e->getMessage());
 }
 
-// --------------------------------------------------------------------------
-// [POST] PROCESAR ACTUALIZACIÓN
-// --------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-
-    // CSRF Check
-    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Error de seguridad CSRF.");
-    }
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) die("Error CSRF.");
 
     $nombre = trim($_POST['nombre']);
     $apellido = trim($_POST['apellido']);
@@ -61,184 +34,174 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $especialidades_seleccionadas = $_POST['especialidades'] ?? [];
 
     if (empty($nombre) || empty($apellido)) {
-        $mensaje = "Nombre y Apellido son obligatorios.";
+        $mensaje = "Nombre y apellido son obligatorios.";
         $tipo_mensaje = "danger";
+    } elseif (count($especialidades_seleccionadas) === 0) {
+        $mensaje = "Debés seleccionar al menos una especialidad.";
+        $tipo_mensaje = "warning";
+        $mis_especialidades_ids = [];
     } else {
-        
-        // LÓGICA DE LA FOTO (Lo más delicado)
-        // Mantenemos la foto vieja por defecto
-        $nombre_foto_final = $cliente['fotoPerfil']; 
-        $hubo_upload = false;
+        $nombre_foto_final = $cliente['fotoPerfil'];
+        $error_subida = false;
 
-        // Si el usuario subió una NUEVA foto...
+        if (isset($_POST['borrar_foto']) && $_POST['borrar_foto'] == '1') {
+            if ($cliente['fotoPerfil'] && file_exists('../uploads/' . $cliente['fotoPerfil'])) unlink('../uploads/' . $cliente['fotoPerfil']);
+            $nombre_foto_final = null;
+        }
+
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
-            $fileTmpPath = $_FILES['foto']['tmp_name'];
-            $fileName = $_FILES['foto']['name'];
-            $fileType = $_FILES['foto']['type'];
-            $fileNameCmps = explode(".", $fileName);
-            $fileExtension = strtolower(end($fileNameCmps));
-            $allowedfileExtensions = array('jpg', 'gif', 'png', 'jpeg', 'webp');
-
-            if (in_array($fileExtension, $allowedfileExtensions)) {
-                // 1. Subimos la nueva
-                $newFileName = md5(time() . $fileName) . '.' . $fileExtension;
-                $uploadFileDir = '../uploads/';
-                $dest_path = $uploadFileDir . $newFileName;
-
-                if(move_uploaded_file($fileTmpPath, $dest_path)) {
-                    $nombre_foto_final = $newFileName; // Actualizamos la variable para la BD
-                    $hubo_upload = true;
-                    
-                    // 2. Borramos la vieja del disco (Limpieza)
-                    if ($cliente['fotoPerfil'] && file_exists($uploadFileDir . $cliente['fotoPerfil'])) {
-                        unlink($uploadFileDir . $cliente['fotoPerfil']);
+            $ext = strtolower(pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION));
+            if ($_FILES['foto']['size'] > 2097152) {
+                $mensaje = "Foto muy pesada (Max 2MB).";
+                $tipo_mensaje = "warning";
+                $error_subida = true;
+            } elseif (in_array($ext, ['jpg', 'png', 'jpeg', 'webp'])) {
+                $newFileName = md5(time() . $_FILES['foto']['name']) . '.' . $ext;
+                if (move_uploaded_file($_FILES['foto']['tmp_name'], '../uploads/' . $newFileName)) {
+                    if ($nombre_foto_final !== null && $nombre_foto_final !== $newFileName && file_exists('../uploads/' . $nombre_foto_final)) {
+                        unlink('../uploads/' . $nombre_foto_final);
                     }
+                    $nombre_foto_final = $newFileName;
                 } else {
-                    $mensaje = "Error al mover la nueva imagen.";
+                    $mensaje = "Error al mover archivo.";
                     $tipo_mensaje = "danger";
+                    $error_subida = true;
                 }
             } else {
-                $mensaje = "Formato de imagen inválido.";
+                $mensaje = "Formato inválido.";
                 $tipo_mensaje = "warning";
+                $error_subida = true;
             }
         }
 
-        // Si no hubo errores de upload, guardamos en BD
-        if (empty($mensaje)) {
+        if (!$error_subida) {
             try {
                 $pdo->beginTransaction();
+                $stmt = $pdo->prepare("UPDATE clientes SET nombre=:n, apellido=:a, fecha_nacimiento=:f, fotoPerfil=:p WHERE id=:id");
+                $stmt->execute([':n' => $nombre, ':a' => $apellido, ':f' => $fecha_nacimiento ?: null, ':p' => $nombre_foto_final, ':id' => $id]);
 
-                // 1. Update Tabla Clientes
-                $sql = "UPDATE clientes SET 
-                            nombre = :nombre, 
-                            apellido = :apellido, 
-                            fecha_nacimiento = :fecha, 
-                            fotoPerfil = :foto 
-                        WHERE id = :id";
-                
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([
-                    ':nombre' => $nombre,
-                    ':apellido' => $apellido,
-                    ':fecha' => $fecha_nacimiento ?: null,
-                    ':foto' => $nombre_foto_final,
-                    ':id' => $id
-                ]);
-
-                // 2. Sincronización de Especialidades (Delete All + Insert New)
-                // Primero borramos las que tenía antes
-                $stmt_del = $pdo->prepare("DELETE FROM cliente_especialidad WHERE cliente_id = :id");
-                $stmt_del->execute([':id' => $id]);
-
-                // Después insertamos las que seleccionó ahora
+                $pdo->prepare("DELETE FROM cliente_especialidad WHERE cliente_id = :id")->execute([':id' => $id]);
                 if (!empty($especialidades_seleccionadas)) {
-                    $sql_pivot = "INSERT INTO cliente_especialidad (cliente_id, especialidad_id) VALUES (:cid, :eid)";
-                    $stmt_pivot = $pdo->prepare($sql_pivot);
-                    foreach ($especialidades_seleccionadas as $esp_id) {
-                        $stmt_pivot->execute([':cid' => $id, ':eid' => $esp_id]);
-                    }
+                    $stmt_p = $pdo->prepare("INSERT INTO cliente_especialidad (cliente_id, especialidad_id) VALUES (:cid, :eid)");
+                    foreach ($especialidades_seleccionadas as $esp_id) $stmt_p->execute([':cid' => $id, ':eid' => $esp_id]);
                 }
-
                 $pdo->commit();
-                
-                // Actualizamos los datos en memoria para que se refresque el form sin recargar
-                $cliente['nombre'] = $nombre;
-                $cliente['apellido'] = $apellido;
-                $cliente['fecha_nacimiento'] = $fecha_nacimiento;
-                $cliente['fotoPerfil'] = $nombre_foto_final;
-                // Recargamos los IDs de especialidades
-                $mis_especialidades_ids = $especialidades_seleccionadas; 
-
-                $mensaje = "¡Datos actualizados correctamente!";
-                $tipo_mensaje = "success";
-
+                $_SESSION['flash_msg'] = "¡Cliente actualizado!";
+                $_SESSION['flash_type'] = "success";
+                header('Location: index.php');
+                exit;
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                $mensaje = "Error al guardar: " . $e->getMessage();
+                $mensaje = "Error DB: " . $e->getMessage();
                 $tipo_mensaje = "danger";
             }
         }
     }
 }
-
 require_once '../includes/header.php';
 ?>
 
-<div class="container-fluid">
-    <h1 class="mt-4">Editar Cliente</h1>
-    <p class="text-muted">Modificá los datos del perfil.</p>
-    <hr>
+<div class="container-fluid px-4 mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-dark mb-0">Editar Cliente</h2>
+        <a href="index.php" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="fa-solid fa-arrow-left me-2"></i> Volver
+        </a>
+    </div>
 
     <?php if ($mensaje): ?>
-        <div class="alert alert-<?php echo $tipo_mensaje; ?> alert-dismissible fade show" role="alert">
-            <?php echo $mensaje; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <div class="alert alert-<?= $tipo_mensaje ?> shadow-sm border-0 rounded-3 d-flex align-items-center mb-4">
+            <i class="fa-solid fa-circle-exclamation fa-lg me-2"></i>
+            <div><strong>Atención:</strong> <?= h($mensaje) ?></div>
         </div>
     <?php endif; ?>
 
-    <div class="card shadow-sm mb-5">
-        <div class="card-body">
-            <form action="editar.php?id=<?php echo $id; ?>" method="POST" enctype="multipart/form-data">
-                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+    <div class="card shadow-sm border-0 rounded-4">
+        <div class="card-body p-4">
 
-                <div class="row">
+            <div class="text-end text-muted small fst-italic mb-3">
+                Los campos con <span class="text-danger">*</span> son obligatorios
+            </div>
+
+            <form action="editar.php?id=<?= $id ?>" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="<?= h($_SESSION['csrf_token']) ?>">
+
+                <div class="row g-4">
                     <div class="col-md-8">
-                        <div class="row mb-3">
+                        <div class="row g-3 mb-3">
                             <div class="col-md-6">
-                                <label class="form-label">Nombre *</label>
-                                <input type="text" name="nombre" class="form-control" 
-                                       value="<?php echo htmlspecialchars($cliente['nombre']); ?>" required>
+                                <label class="form-label fw-bold small text-secondary">Nombre <span class="text-danger">*</span></label>
+                                <input type="text" name="nombre" class="form-control bg-light border-0" value="<?= h($cliente['nombre']) ?>" required>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Apellido *</label>
-                                <input type="text" name="apellido" class="form-control" 
-                                       value="<?php echo htmlspecialchars($cliente['apellido']); ?>" required>
+                                <label class="form-label fw-bold small text-secondary">Apellido <span class="text-danger">*</span></label>
+                                <input type="text" name="apellido" class="form-control bg-light border-0" value="<?= h($cliente['apellido']) ?>" required>
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Fecha de Nacimiento</label>
-                            <input type="date" name="fecha_nacimiento" class="form-control" 
-                                   value="<?php echo $cliente['fecha_nacimiento']; ?>">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold small text-secondary">Fecha de Nacimiento(opcional)</label>
+                            <input type="date" name="fecha_nacimiento" class="form-control bg-light border-0" value="<?= h($cliente['fecha_nacimiento']) ?>">
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Foto de Perfil</label>
-                            <div class="d-flex align-items-center gap-3 mb-2">
-                                <?php if($cliente['fotoPerfil']): ?>
-                                    <img src="../uploads/<?php echo $cliente['fotoPerfil']; ?>" 
-                                         alt="Actual" class="rounded-circle border" width="60" height="60" style="object-fit:cover;">
-                                    <small class="text-muted">Foto actual</small>
-                                <?php else: ?>
-                                    <span class="badge bg-secondary">Sin foto</span>
-                                <?php endif; ?>
+                            <label class="form-label fw-bold small text-secondary">Foto de Perfil</label>
+                            <div class="d-flex align-items-center gap-4 p-3 border rounded-4 bg-light">
+                                <div class="position-relative">
+                                    <?php if ($cliente['fotoPerfil']): ?>
+                                        <img src="../uploads/<?= h($cliente['fotoPerfil']) ?>" width="80" height="80" class="rounded-circle border shadow-sm object-fit-cover bg-white">
+                                    <?php else: ?>
+                                        <div class="rounded-circle border bg-white d-flex align-items-center justify-content-center text-muted fw-bold" style="width: 80px; height: 80px; font-size: 1.5rem;">
+                                            <?= h(strtoupper(substr($cliente['nombre'], 0, 1))) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="flex-grow-1">
+                                    <input type="file" name="foto" class="form-control form-control-sm mb-2" accept="image/*">
+                                    <?php if ($cliente['fotoPerfil']): ?>
+                                        <div class="form-check mt-1">
+                                            <input class="form-check-input border-danger" type="checkbox" name="borrar_foto" value="1" id="check_borrar">
+                                            <label class="form-check-label text-danger fw-bold small cursor-pointer" for="check_borrar">
+                                                <i class="fa-solid fa-trash-can me-1"></i> Eliminar foto actual
+                                            </label>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                            <input type="file" name="foto" class="form-control" accept="image/*">
-                            <div class="form-text">Dejar vacío para mantener la foto actual.</div>
                         </div>
                     </div>
 
                     <div class="col-md-4">
-                        <div class="card bg-light border-0">
+                        <div class="card border border-light shadow-none h-100 rounded-4 bg-white">
+                            <div class="card-header bg-white border-0 pt-3 pb-0">
+                                <h6 class="fw-bold mb-0 text-dark">Especialidades <span class="text-danger">*</span></h6>
+                            </div>
                             <div class="card-body">
-                                <h5 class="card-title mb-3"><i class="fa-solid fa-code"></i> Especialidades</h5>
-                                <div class="vstack gap-2">
+                                <div class="vstack gap-1" style="max-height: 300px; overflow-y: auto;">
                                     <?php foreach ($todas_especialidades as $esp): ?>
-                                        <?php 
-                                            // Truco: Verificamos si el ID está en el array de las que tiene el usuario
-                                            // Ojo: in_array a veces es estricto con strings vs ints, pero acá suele andar bien.
-                                            $checked = in_array($esp['id'], $mis_especialidades_ids) ? 'checked' : '';
+                                        <?php
+                                        $checked = '';
+                                        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                                            if (in_array($esp['id'], $especialidades_seleccionadas)) $checked = 'checked';
+                                        } else {
+                                            if (in_array($esp['id'], $mis_especialidades_ids)) $checked = 'checked';
+                                        }
                                         ?>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" 
-                                                   name="especialidades[]" 
-                                                   value="<?php echo $esp['id']; ?>" 
-                                                   id="esp_<?php echo $esp['id']; ?>"
-                                                   <?php echo $checked; ?>>
-                                            <label class="form-check-label" for="esp_<?php echo $esp['id']; ?>">
-                                                <?php echo htmlspecialchars($esp['nombre']); ?>
-                                            </label>
+
+                                        <div class="p-2 rounded hover-bg-light pointer-wrapper">
+                                            <div class="form-check">
+                                                <input class="form-check-input cursor-pointer" type="checkbox"
+                                                    name="especialidades[]"
+                                                    value="<?= $esp['id'] ?>"
+                                                    id="esp_<?= $esp['id'] ?>"
+                                                    <?= $checked ?>>
+                                                <label class="form-check-label w-100 cursor-pointer" for="esp_<?= $esp['id'] ?>">
+                                                    <?= h($esp['nombre']) ?>
+                                                </label>
+                                            </div>
                                         </div>
+
                                     <?php endforeach; ?>
                                 </div>
                             </div>
@@ -246,15 +209,29 @@ require_once '../includes/header.php';
                     </div>
                 </div>
 
-                <div class="mt-4 d-flex gap-2">
-                    <button type="submit" class="btn btn-warning btn-lg text-dark fw-bold">
-                        <i class="fa-solid fa-save"></i> Actualizar Datos
-                    </button>
-                    <a href="index.php" class="btn btn-secondary btn-lg">Volver</a>
+                <hr class="my-4 border-light">
+
+                <div class="d-flex gap-2 justify-content-end">
+                    <a href="index.php" class="btn btn-light text-secondary rounded-pill px-4 fw-bold">Cancelar</a>
+                    <button type="submit" class="btn btn-warning text-white rounded-pill px-5 fw-bold shadow-sm">Guardar Cambios</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<?php require_once '../includes/footer.php'; 
+<style>
+    .hover-bg-light:hover {
+        background-color: #f8f9fa;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .object-fit-cover {
+        object-fit: cover;
+    }
+</style>
+
+<?php require_once '../includes/footer.php'; ?>

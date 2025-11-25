@@ -1,79 +1,58 @@
 <?php
-// 1. Configuración y Seguridad
+// clientes/eliminar.php
 require_once '../includes/config.php';
+require_once '../includes/require_login.php';
 
-// A) Verificamos Login
-if (!isset($_SESSION['user_id'])) {
-    header('Location: ' . BASE_URL . '/auth/login.php');
+// 2. Control de Roles (Solo Admin)
+if ($_SESSION['rol'] !== 'admin') {
+    $_SESSION['flash_msg'] = "Acceso denegado: Solo administradores pueden borrar.";
+    $_SESSION['flash_type'] = "danger";
+    header('Location: index.php');
     exit;
 }
 
-// B) CONTROL DE ROLES (CRÍTICO)
-// Esto es el "muro de fuego". Aunque ocultamos el botón en el index,
-// si un operador intenta llamar a este archivo, lo frenamos acá.
-if ($_SESSION['rol'] !== 'admin') {
-    die("ACCESO DENEGADO: No tenés permisos de Administrador para eliminar registros.");
-}
-
-// --------------------------------------------------------------------------
-// [LÓGICA] PROCESAMIENTO
-// --------------------------------------------------------------------------
-// Solo aceptamos POST (para evitar ataques por links maliciosos)
+// 3. Procesamiento
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-    // C) Validación CSRF
+    // Validación CSRF
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
-        die("Error de seguridad: Token CSRF inválido.");
+        $_SESSION['flash_msg'] = "Error de seguridad (Token inválido).";
+        $_SESSION['flash_type'] = "danger";
+        header('Location: index.php');
+        exit;
     }
 
-    // Obtenemos ID
     $id = filter_var($_POST['id'], FILTER_VALIDATE_INT);
 
     if ($id) {
         try {
-            // PASO 1: Buscar la foto antes de borrar el registro
-            // Necesitamos saber el nombre del archivo para borrarlo del disco.
-            $sql_foto = "SELECT fotoPerfil FROM clientes WHERE id = :id";
-            $stmt_foto = $pdo->prepare($sql_foto);
-            $stmt_foto->execute([':id' => $id]);
-            $cliente = $stmt_foto->fetch();
+            // SOFT DELETE: No borramos físicamente, solo desactivamos.
+            // Actualizamos la columna 'activo' a 0
+            $stmt = $pdo->prepare("UPDATE clientes SET activo = 0 WHERE id = :id");
+            $stmt->execute([':id' => $id]);
 
-            // Si el cliente existe, procedemos
-            if ($cliente) {
-                
-                // Borrado de archivo físico (Limpieza)
-                if (!empty($cliente['fotoPerfil'])) {
-                    $ruta_archivo = '../uploads/' . $cliente['fotoPerfil'];
-                    if (file_exists($ruta_archivo)) {
-                        unlink($ruta_archivo); // ¡Chau foto!
-                    }
-                }
-
-                // PASO 2: Borrar de la Base de Datos
-                // Gracias a las Foreign Keys con ON DELETE CASCADE que definimos al principio,
-                // al borrar el cliente, MySQL borra SOLITO las relaciones en 'cliente_especialidad'.
-                $sql_delete = "DELETE FROM clientes WHERE id = :id";
-                $stmt_delete = $pdo->prepare($sql_delete);
-                $stmt_delete->execute([':id' => $id]);
-
-                // Éxito
-                // Podríamos usar una sesión flash para mostrar mensaje, pero por ahora redirigimos.
-                header('Location: index.php?msg=eliminado');
-                exit;
+            // Verificamos si se tocó alguna fila
+            if ($stmt->rowCount() > 0) {
+                $_SESSION['flash_msg'] = "Cliente desactivado correctamente (Papelera).";
+                $_SESSION['flash_type'] = "success";
             } else {
-                die("El cliente no existe.");
+                $_SESSION['flash_msg'] = "El cliente no existe o ya estaba desactivado.";
+                $_SESSION['flash_type'] = "warning";
             }
-
         } catch (PDOException $e) {
-            die("Error de base de datos al eliminar: " . $e->getMessage());
+            $_SESSION['flash_msg'] = "Error de BD: " . $e->getMessage();
+            $_SESSION['flash_type'] = "danger";
         }
     } else {
-        die("ID inválido.");
+        $_SESSION['flash_msg'] = "ID inválido.";
+        $_SESSION['flash_type'] = "danger";
     }
-
 } else {
-    // Si intentan entrar por GET (escribiendo la url en el navegador) lo sacamos volando.
+    // Si entran por GET
     header('Location: index.php');
     exit;
 }
-?>
+
+// Redirección final
+header('Location: index.php');
+exit;
