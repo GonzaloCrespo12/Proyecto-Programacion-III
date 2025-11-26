@@ -30,12 +30,12 @@ if (session_status() === PHP_SESSION_NONE) {
 // CONSTANTES GLOBALES Y CREDENCIALES
 // URL base para generar rutas absolutas y evitar problemas de navegacion.
 // Ajustar segun entorno de desarrollo o produccion.
-define('BASE_URL', 'http://localhost/proyectoProgramacionIII');
+define('BASE_URL', 'http://localhost/Proyecto-Programacion-III');
 
 // Credenciales de conexion a la Base de Datos.
 // Ajustar segun entorno de desarrollo o produccion.
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'base_datos_clientes');
+define('DB_NAME', '');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
