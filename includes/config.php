@@ -35,7 +35,7 @@ define('BASE_URL', 'http://localhost/Proyecto-Programacion-III');
 // Credenciales de conexion a la Base de Datos.
 // Ajustar segun entorno de desarrollo o produccion.
 define('DB_HOST', 'localhost');
-define('DB_NAME', '');
+define('DB_NAME', 'base_datos_clientes');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
